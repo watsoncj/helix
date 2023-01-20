@@ -935,6 +935,47 @@ pub fn goto_reference(cx: &mut Context) {
     );
 }
 
+pub fn switch_source_header(cx: &mut Context) {
+    let (_, doc) = current!(cx.editor);
+
+    let language_server = doc.language_servers().find(|l| {
+        // `switchSourceHeader` is not included in the capabilities list.
+        // At the moment this is only implemented by clangd, so we explicitly check
+        // for it to avoid sending unexpected requests.
+        match l.server_info() {
+            None => false,
+            Some(info) => info.name == "clangd",
+        }
+    });
+
+    let language_server = match language_server {
+        Some(l) => l,
+        None => {
+            cx.editor
+                .set_status("Switch source/header is only supported for clangd");
+            return;
+        }
+    };
+
+    let future = language_server.switch_source_header(doc.identifier());
+
+    cx.callback(future, move |editor, _, response: Option<lsp::Url>| {
+        let url = match response {
+            Some(url) => url,
+            None => {
+                editor.set_status("Could not determine matching source/header");
+                return;
+            }
+        };
+        let path = url.to_file_path().unwrap();
+        if let Err(err) = editor.open(&path, Action::Replace) {
+            let err = format!("failed to open document: {}: {}", path.display(), err);
+            editor.set_error(err);
+            return;
+        }
+    });
+}
+
 pub fn signature_help(cx: &mut Context) {
     cx.editor
         .handlers

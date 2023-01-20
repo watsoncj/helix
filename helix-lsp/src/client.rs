@@ -45,6 +45,15 @@ fn workspace_for_uri(uri: lsp::Url) -> WorkspaceFolder {
 }
 
 #[derive(Debug)]
+pub enum SwitchSourceHeader {}
+
+impl lsp::request::Request for SwitchSourceHeader {
+    type Params = lsp::TextDocumentIdentifier;
+    type Result = Option<Value>;
+    const METHOD: &'static str = "textDocument/switchSourceHeader";
+}
+
+#[derive(Debug)]
 pub struct Client {
     id: usize,
     name: String,
@@ -53,6 +62,7 @@ pub struct Client {
     request_counter: AtomicU64,
     pub(crate) capabilities: OnceCell<lsp::ServerCapabilities>,
     pub(crate) file_operation_interest: OnceLock<FileOperationsInterest>,
+    pub(crate) server_info: OnceCell<lsp::ServerInfo>,
     config: Option<Value>,
     root_path: std::path::PathBuf,
     root_uri: Option<lsp::Url>,
@@ -219,6 +229,7 @@ impl Client {
             request_counter: AtomicU64::new(0),
             capabilities: OnceCell::new(),
             file_operation_interest: OnceLock::new(),
+            server_info: OnceCell::new(),
             config,
             req_timeout,
             root_path,
@@ -348,6 +359,10 @@ impl Client {
                 Some(OneOf::Left(true) | OneOf::Right(InlayHintServerCapabilities::Options(_)))
             ),
         }
+    }
+
+    pub fn server_info(&self) -> Option<&lsp::ServerInfo> {
+        self.server_info.get()
     }
 
     pub fn offset_encoding(&self) -> OffsetEncoding {
@@ -1514,6 +1529,13 @@ impl Client {
             let response: Option<lsp::WorkspaceEdit> = serde_json::from_value(json)?;
             Ok(response.unwrap_or_default())
         })
+    }
+
+    pub fn switch_source_header(
+        &self,
+        text_document: lsp::TextDocumentIdentifier,
+    ) -> impl Future<Output = Result<Value>> {
+        self.call::<SwitchSourceHeader>(text_document)
     }
 
     pub fn command(&self, command: lsp::Command) -> Option<impl Future<Output = Result<Value>>> {

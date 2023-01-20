@@ -520,6 +520,7 @@ impl MappableCommand {
         command_palette, "Open command palette",
         goto_word, "Jump to a two-character label",
         extend_to_word, "Extend to a two-character label",
+        switch_source_header, "Switch source/header",
     );
 }
 
