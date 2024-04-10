@@ -578,15 +578,13 @@ impl EditorView {
     }
 
     /// Render bufferline at the top
-    pub fn render_bufferline(editor: &Editor, viewport: Rect, surface: &mut Surface) {
+    pub fn render_bufferline(editor: &Editor, viewport: Rect, surface: &mut Surface) -> u16 {
         let scratch = PathBuf::from(SCRATCH_BUFFER_NAME); // default filename to use for scratch buffer
-        surface.clear_with(
-            viewport,
-            editor
-                .theme
-                .try_get("ui.bufferline.background")
-                .unwrap_or_else(|| editor.theme.get("ui.statusline")),
-        );
+
+        let bufferline_background = editor
+            .theme
+            .try_get("ui.bufferline.background")
+            .unwrap_or_else(|| editor.theme.get("ui.statusline"));
 
         let bufferline_active = editor
             .theme
@@ -599,9 +597,19 @@ impl EditorView {
             .unwrap_or_else(|| editor.theme.get("ui.statusline.inactive"));
 
         let mut x = viewport.x;
+        let mut y = viewport.y;
+        let mut used_height = 0;
         let current_doc = view!(editor).doc;
 
         for doc in editor.documents() {
+            if used_height < y + 1 {
+                used_height = y + 1;
+                surface.clear_with(
+                    viewport.clip_top(y).with_height(1),
+                    bufferline_background,
+                );
+            }
+
             let fname = doc
                 .path()
                 .unwrap_or(&scratch)
@@ -621,13 +629,16 @@ impl EditorView {
             let rem_width = surface.area.width.saturating_sub(used_width);
 
             x = surface
-                .set_stringn(x, viewport.y, text, rem_width as usize, style)
+                .set_stringn(x, y, text, rem_width as usize, style)
                 .0;
 
             if x >= surface.area.right() {
-                break;
+                x = viewport.x;
+                y += 1;
             }
         }
+
+        return used_height;
     }
 
     pub fn render_gutter<'d>(
@@ -1476,18 +1487,19 @@ impl Component for EditorView {
             _ => false,
         };
 
-        // -1 for commandline and -1 for bufferline
+        let mut bufferline_height = 0;
+        if use_bufferline {
+            bufferline_height = Self::render_bufferline(cx.editor, area, surface);
+        }
+
+        // -1 for commandline
         let mut editor_area = area.clip_bottom(1);
         if use_bufferline {
-            editor_area = editor_area.clip_top(1);
+            editor_area = editor_area.clip_top(bufferline_height);
         }
 
         // if the terminal size suddenly changed, we need to trigger a resize
         cx.editor.resize(editor_area);
-
-        if use_bufferline {
-            Self::render_bufferline(cx.editor, area.with_height(1), surface);
-        }
 
         for (view, is_focused) in cx.editor.tree.views() {
             let doc = cx.editor.document(view.doc).unwrap();
